@@ -1,0 +1,241 @@
+---
+title: "Final Project 706"
+author: "Caihan Wang"
+date: "4/30/2021"
+output: word_document
+---
+
+#Library packages
+```{r message=FALSE}
+library(readr)
+library(tidyverse)
+library(knitr)
+library(ggplot2)
+library(patchwork)
+library(psych)
+```
+
+#Read in data
+```{r}
+setwd("~/Desktop/duke courses/706/Final Project")
+raw_data = read.csv("camp_teach.csv")
+describe(raw_data)
+```
+
+#Clean data
+```{r}
+#select some columns
+ds1 = raw_data %>%
+  select(TG, id, age_rz, GENDER, ETHNIC, PREFEVPP, POSFEVPP, anypet,visitc)#695 children
+```
+```{r}
+#delete some rows, we only need baseline and last observation
+ds2 = data.frame()
+for (i in unique(ds1$id)){
+     ds2 = rbind(
+       ds2, ds1%>%filter(id == i)%>%filter(visitc == max(visitc)|visitc == min(visitc)))
+}
+
+#ds2 1387 observations, I expect it as 1390 observations. It means that some patient have only one observation, we need to delete them
+```
+```{r}
+#split the ds2 by baseline and last observation
+ds2_base = ds2 %>% filter(visitc == 0) #695
+ds2_last = ds2 %>% filter(visitc != 0) #692
+```
+```{r}
+#merge two splitted data
+ds3 = merge(ds2_base, ds2_last,by = 'id')
+```
+```{r}
+ds3 = ds3[,c(1:8,14,15)]#692
+```
+```{r}
+describe(ds3)
+```
+```{r}
+#delete NA
+ds4 = na.omit(ds3)#675
+```
+```{r}
+#Create new variables of outcomes
+for (i in 1:646){
+  ds4$Lung_Func_base[i] = ds4$POSFEVPP.x[i] - ds4$PREFEVPP.x[i]
+  ds4$Lung_Func_last[i] = ds4$POSFEVPP.y[i] - ds4$PREFEVPP.y[i]
+  ds4$Lung_Func_diff[i] = ds4$Lung_Func_last[i] - ds4$Lung_Func_base[i]
+  ds4$Trt_Effects[i] = ds4$POSFEVPP.y[i] - ds4$POSFEVPP.x[i]
+}
+describe(ds4)
+```
+#demographic table
+```{r}
+ds4%>%filter(age_rz.x>=10)%>%group_by(factor(anypet.x))%>%summarise(n = n())
+
+
+
+
+```
+#Data Visualization
+```{r}
+pic1 = ggplot(ds4, aes(x=Lung_Func_base))+geom_histogram(binwidth = 3)
+pic2 = ggplot(ds4, aes(x=Lung_Func_diff))+geom_histogram(binwidth = 3)
+pic3 = ggplot(ds4, aes(x=Trt_Effects))+geom_histogram(binwidth = 3)
+fig1 = pic1 + pic2 + pic3 
+fig1
+```
+```{r}
+pic4 = ggplot(ds4, aes(sample = Lung_Func_base))+
+  geom_qq(size=1)+geom_qq_line()+ggtitle("Lung Function baseline")
+pic5 = ggplot(ds4, aes(sample = Lung_Func_diff))+
+  geom_qq(size=1)+geom_qq_line()+ggtitle("Lung Function Diff")
+pic6 = ggplot(ds4, aes(sample = Trt_Effects))+
+  geom_qq(size=1)+geom_qq_line()+ggtitle("Treatment Effects")
+fig2 = pic4 + pic5 + pic6
+fig2
+```
+
+#Model1
+```{r}
+#Aim 1
+test1<-glm(formula = Lung_Func_base ~ factor(anypet.x) + age_rz.x + factor(GENDER.x) + factor(ETHNIC.x),
+           family = gaussian, data = ds4)
+summary(test1)
+
+p1 <- ggplot(data = ds4, aes(x = age_rz.x, y = Lung_Func_base, color = factor(anypet.x))) + 
+  geom_point(alpha=0.8) + 
+  scale_color_manual(values=c('#33CCFF','#CC0000'), labels=c("With Pets", "Without Pets"))+
+  theme_bw()+
+  stat_smooth(method="lm", se=F)+
+  xlab('Age')+
+  ylab('Lung Function at Baseline')+
+  theme(legend.title = element_blank())+
+  theme(legend.position = 'bottom')+
+  ggtitle("Plot of Lung Function at baseline and Age group by Precense of Pet")
+p1
+
+par(mfrow=c(2,2))
+plot(test1)
+```
+
+```{r}
+#Aim 2
+model2 = glm(Lung_Func_diff ~ factor(anypet.x) + age_rz.x + factor(GENDER.x) + factor(ETHNIC.x), data = ds4, family = gaussian)
+summary(model2)
+p2 <- ggplot(data = ds4, aes(x = age_rz.x, y = Lung_Func_diff, color = factor(anypet.x))) + 
+  geom_point(alpha=0.8) + 
+  scale_color_manual(values=c('#33CCFF','#CC0000'), labels=c("With Pets", "Without Pets"))+
+  theme_bw()+
+  stat_smooth(method="lm", se=F)+
+  xlab('Age')+
+  ylab('Lung Function Difference')+
+  theme(legend.title = element_blank())+
+  theme(legend.position = 'bottom')+
+  ggtitle("Plot of Lung Function Difference and Age group by Precense of Pet")
+p2
+par(mfrow=c(2,2))
+plot(model2)
+```
+
+```{r}
+#Aim 3
+test3 <- glm(formula = Trt_Effects ~factor(anypet.x)+ factor(TG.x)+ age_rz.x + factor(GENDER.x)+factor(ETHNIC.x) , data = ds4, family = gaussian)
+summary(test3)
+
+p3 <- ggplot(data = ds4, aes(x = age_rz.x, y = Trt_Effects, color = factor(anypet.x))) + 
+  geom_point(alpha=0.8) + 
+  scale_color_manual(values=c('#33CCFF','#CC0000'), labels=c("With Pet", "Without Pet"))+
+  theme_bw()+
+  stat_smooth(method="lm", se=F)+
+  xlab('Age')+
+  ylab('Treatment Effects')+
+  theme(legend.title = element_blank())+
+  theme(legend.position = 'right')+
+  ggtitle("Plot of Treatment Effects and Age group by Precense of Pet")
+p3
+
+
+par(mfrow=c(2,2))
+plot(test3)
+```
+
+
+```{r}
+model4 <- lm(Trt_Effects ~ factor(anypet.x) * factor(TG.x), data = ds4)
+anova(model4)
+par(mfrow=c(2,2))
+plot(model4)
+
+```
+```{r}
+Trt_Effects_mean <- ds4 %>%
+  group_by(anypet.x, TG.x) %>%
+  summarise(Means = mean(Trt_Effects))
+Trt_Effects_mean
+```
+```{r}
+p4 <- ggplot(data = ds4, aes(x = TG.x, y = Trt_Effects, colour = factor(anypet.x))) + 
+  geom_boxplot()+
+  theme_bw()+
+  xlab('Treatment Group')+
+  ylab('Treatment Effects')+
+  scale_x_discrete(labels = c('bud','ned','plbo'))+
+  theme(legend.title = element_blank())+
+  scale_color_manual(values=c('#33CCFF','#CC0000'),
+                     labels=c("With Pet", "Without Pet"))
+
+p4
+```
+```{r}
+p5 <- ggplot(Trt_Effects_mean, aes(x=TG.x, y=Means, colour = factor(anypet.x), group = factor(anypet.x)))+
+  geom_point(size = 4) + geom_line()+
+  theme_bw()+
+  xlab('Treatment Group')+
+  ylab('Mean of Treatment Effects')+
+  scale_x_discrete(labels = c('bud','ned','plbo'))+
+  theme(legend.title = element_blank())+
+  theme(legend.position ="bottom")+
+  scale_color_manual(values=c('#33CCFF','#CC0000'), 
+                    labels=c("With Pet", "Without Pet"))
+  
+p5
+```
+
+
+```{r}
+p6 <- ggplot(data = ds4, aes(x = GENDER.x, y = Lung_Func_base, colour = factor(anypet.x))) + 
+  geom_boxplot()+
+  theme_bw()+
+  xlab('Gender')+
+  ylab('Lung Function at Baseline')+
+  scale_x_discrete(labels = c("Female", "Male"))+
+  theme(legend.title = element_blank())+
+  scale_color_manual(values=c('#33CCFF','#CC0000'),
+                     labels=c("With Pet", "Without Pet"))
+
+p6
+```
+```{r}
+p7 <- ggplot(data = ds4, aes(x = ETHNIC.x, y = Lung_Func_base, colour = factor(anypet.x))) + 
+  geom_boxplot()+
+  theme_bw()+
+  xlab('Ethnic')+
+  ylab('Lung Function at Baseline')+
+  scale_x_discrete(labels = c("Black", "Hispanic","Other","White"))+
+  theme(legend.title = element_blank())+
+  scale_color_manual(values=c('#33CCFF','#CC0000'),
+                     labels=c("With Pet", "Without Pet"))
+
+p7
+```
+
+
+
+
+
+
+
+
+
+
+
+
