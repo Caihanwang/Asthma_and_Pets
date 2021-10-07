@@ -1,5 +1,5 @@
 ---
-title: "Final Project 706"
+title: "Asthmatic Children and Presence of Pets"
 author: "Caihan Wang"
 date: "4/30/2021"
 output: word_document
